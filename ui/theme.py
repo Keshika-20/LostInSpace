@@ -1,0 +1,19 @@
+"""Shared colours and layout settings for the Lost in Space UI."""
+
+BACKGROUND = (13, 18, 32)
+PANEL = (24, 32, 52)
+GRID_LINE = (68, 82, 110)
+GRID_CELL = (31, 42, 64)
+TEXT = (235, 241, 255)
+MUTED_TEXT = (155, 171, 199)
+ROVER = (70, 220, 190)
+ROVER_OUTLINE = (220, 255, 248)
+ACCENT = (95, 155, 255)
+
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 650
+GRID_ROWS = 10
+GRID_COLS = 10
+CELL_SIZE = 48
+GRID_LEFT = 40
+GRID_TOP = 100
