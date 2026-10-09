@@ -30,4 +30,13 @@ __pycache__/
 .idea/
 .DS_Store
 *.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+```
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
 *.sw?
