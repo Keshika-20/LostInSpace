@@ -1,11 +1,19 @@
 
 class TargetSelector:
-    """Selects unexplored places using the known map."""
+    """Selects useful unexplored locations for the rover."""
 
-    def select_target(self, known_map, current_position):
+    def select_target(
+        self,
+        known_map,
+        current_position,
+        blocked=None,
+        goal=None
+    ):
+        if blocked is None:
+            blocked = set()
+
         x, y = current_position
 
-        # Check right, left, down, and up.
         neighbours = [
             (x + 1, y),
             (x - 1, y),
@@ -13,10 +21,27 @@ class TargetSelector:
             (x, y - 1)
         ]
 
-        # Select a neighbouring cell not yet explored.
-        for nx, ny in neighbours:
-            if (nx, ny) not in known_map:
-                return (nx, ny)
+        candidates = []
 
-        # All neighbouring cells are already known.
-        return None
+        for position in neighbours:
+            if position in known_map:
+                continue
+
+            if position in blocked:
+                continue
+
+            candidates.append(position)
+
+        if not candidates:
+            return None
+
+        # If a goal is provided, prefer the candidate
+        # with the smallest Manhattan distance to it.
+        if goal is not None:
+            candidates.sort(
+                key=lambda position:
+                    abs(position[0] - goal[0])
+                    + abs(position[1] - goal[1])
+            )
+
+        return candidates[0]
