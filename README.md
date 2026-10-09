@@ -1,16 +1,71 @@
-# React + Vite
+# Lost in Space — Rover Mission Control
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Lost in Space is a student project to build a rover mission simulator with a
+grid-based view of an unexplored world. The project uses Python and Pygame.
 
-Currently, two official plugins are available:
+## Current status
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The root Pygame application integrates the simulation through **Stage 5**:
 
-## React Compiler
+- A rover explores an initially unknown grid with a repeatable, seeded world.
+- Terrain contains traversable ground and obstacles; only the rover's observed
+  map is shown as explored.
+- Arrow keys or WASD, the on-screen direction pad, and the Start/Pause/Reset
+  controls operate on the same rover instance.
+- The rover automatically observes its surroundings as it moves. Discovered
+  science resources appear on the map.
+- A route preview finds a shortest safe path through known terrain to the
+  nearest discovered resource. It does not drive the rover automatically.
+- Collect loads the resource under the rover into its limited cargo capacity.
+  The dashboard reports energy, coverage, cargo, resources, and moves.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Communication-zone upload, autonomous mission execution, dynamic terrain
+events, and batch analytics are not part of this Stage 5 interface.
 
-## Expanding the Oxlint configuration
+## Prerequisites
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- Python 3
+- Windows PowerShell
+
+## Setup
+
+From the project folder, create and activate a virtual environment:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the project dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+## Run and test
+
+Start the application with:
+
+```powershell
+python main.py
+```
+
+Run the root-project tests with:
+
+```powershell
+python -m pytest -q .\tests --import-mode=importlib
+```
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| Start / Pause | Enable or pause rover commands |
+| Arrow keys / WASD / direction pad | Move one cell |
+| C / Collect | Collect a discovered resource at the rover's position |
+| P / Route | Preview a safe route to a known resource |
+| Reset | Restore the same seeded world and rover baseline |
+| Esc / window close | Quit |
+
+Resources and terrain use fixed seeds at launch, so each fresh run and Reset
+reproduces the same world.
