@@ -28,3 +28,20 @@ def test_controller_waits_when_energy_is_empty():
     action = controller.step()
 
     assert action == {"type": "WAIT"}
+
+
+def test_controller_selects_new_target_after_reaching_target():
+    rover = SimpleNamespace(x=1, y=0, energy=10)
+
+    controller = MissionController(
+        rover,
+        None,
+        target=(1, 0)
+    )
+
+    controller.known_map = {(1, 0)}
+    controller.blocked = set()
+
+    action = controller.explore_step()
+
+    assert action["type"] == "MOVE"
