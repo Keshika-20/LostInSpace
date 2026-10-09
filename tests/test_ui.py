@@ -4,8 +4,10 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 import pytest
+from simulation.environment import OBSTACLE, Environment
+from simulation.rover import Rover
 from ui.map_renderer import draw_map, get_position
-from ui.dashboard import _position
+from ui.dashboard import _position, draw_dashboard
 from ui.controls import Controls
 
 
@@ -57,3 +59,50 @@ def test_controls_return_command_without_mutating_state():
                                pos=controls.buttons["START"].center)
     assert controls.handle_event(event) == "START"
     assert controls.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE)) is None
+
+
+def test_dashboard_coverage_uses_free_cells_and_displays_percentage(monkeypatch):
+    environment = Environment(3, 3)
+    environment.grid[2][2] = OBSTACLE
+    rover = Rover(environment, vision_radius=0)
+    rover.move_to((0, 1))
+    rendered_text = []
+
+    class CapturingFont:
+        def render(self, text, antialias, color):
+            rendered_text.append(text)
+            return pygame.Surface((1, 1))
+
+    monkeypatch.setattr(pygame.font, "SysFont", lambda *args, **kwargs: CapturingFont())
+    draw_dashboard(
+        pygame.Surface((900, 650)),
+        rover,
+        False,
+        environment=environment,
+    )
+
+    assert environment.free_cell_count() == 8
+    assert rover.known_map.known_free_count() == 2
+    assert "Explored: 2/8 (25%)" in rendered_text
+
+
+def test_dashboard_coverage_handles_world_with_no_free_cells(monkeypatch):
+    environment = Environment(3, 3)
+    rover = Rover(environment, vision_radius=0)
+    monkeypatch.setattr(environment, "free_cell_count", lambda: 0)
+    rendered_text = []
+
+    class CapturingFont:
+        def render(self, text, antialias, color):
+            rendered_text.append(text)
+            return pygame.Surface((1, 1))
+
+    monkeypatch.setattr(pygame.font, "SysFont", lambda *args, **kwargs: CapturingFont())
+    draw_dashboard(
+        pygame.Surface((900, 650)),
+        rover,
+        False,
+        environment=environment,
+    )
+
+    assert "Explored: 1/0 (0%)" in rendered_text
