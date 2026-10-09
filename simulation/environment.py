@@ -1,6 +1,6 @@
 """Environment: the true world the rover lives in.
 
-Stage 1: stores grid dimensions and a placeholder grid only.
+Stage 2: adds a fixed test layout with obstacles.
 Coordinates are (row, col), zero-based. Rows grow downward, columns grow rightward.
 """
 
@@ -19,7 +19,7 @@ class Environment:
             raise ValueError("rows and cols must be positive")
         self.rows = rows
         self.cols = cols
-        # Placeholder grid: every cell is free. Real terrain comes in Stage 3.
+        # Every cell starts free. Random terrain comes in Stage 3.
         self.grid = [[FREE for _ in range(cols)] for _ in range(rows)]
 
     def in_bounds(self, pos: Position) -> bool:
@@ -30,3 +30,14 @@ class Environment:
     def is_traversable(self, pos: Position) -> bool:
         """True if the rover may stand on this cell (inside the grid and not an obstacle)."""
         return self.in_bounds(pos) and self.grid[pos[0]][pos[1]] != OBSTACLE
+
+    def load_test_layout(self) -> None:
+        """Fixed layout for Stage 2 testing: a vertical wall in column 5, rows 2 to 7.
+
+        The gaps at rows 0-1 and rows 8-9 let a later A* path go around the wall.
+        Needs a grid with at least 8 rows and 6 columns (the default 10x10 works).
+        """
+        if self.rows < 8 or self.cols < 6:
+            raise ValueError("test layout needs at least 8 rows and 6 columns")
+        for row in range(2, 8):
+            self.grid[row][5] = OBSTACLE
