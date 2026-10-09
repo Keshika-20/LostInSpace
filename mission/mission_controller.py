@@ -1,4 +1,7 @@
 
+from mission.pathfinder import Pathfinder
+
+
 class MissionController:
     """Controls the rover's mission decisions."""
 
@@ -7,32 +10,48 @@ class MissionController:
         self.environment = environment
         self.target = target
 
+        self.pathfinder = Pathfinder()
+        self.path = []
+        self.blocked = set()
+
     def step(self):
-        # If energy is empty, do not move.
+        # Stop if the rover has no energy.
         if self.rover.energy <= 0:
             return {"type": "WAIT"}
 
-        # Get the rover's current position.
-        x = self.rover.x
-        y = self.rover.y
+        current = (self.rover.x, self.rover.y)
 
-        # Get the target position.
-        target_x, target_y = self.target
-
-        # Move horizontally first.
-        if x < target_x:
-            return {"type": "MOVE", "dx": 1, "dy": 0}
-
-        elif x > target_x:
-            return {"type": "MOVE", "dx": -1, "dy": 0}
-
-        # Then move vertically.
-        elif y < target_y:
-            return {"type": "MOVE", "dx": 0, "dy": 1}
-
-        elif y > target_y:
-            return {"type": "MOVE", "dx": 0, "dy": -1}
-
-        # The rover has reached its target.
-        else:
+        # If the rover reaches the target, stop.
+        if current == self.target:
+            self.path = []
             return {"type": "WAIT"}
+
+        # Replan if there is no path or the rover's position
+        # no longer matches the first cell in the path.
+        if not self.path or self.path[0] != current:
+            self.path = self.pathfinder.find_path(
+                current, self.target, self.blocked
+            )
+
+        # No route exists.
+        if self.path is None:
+            return {"type": "WAIT"}
+
+        # Replan if the next cell is blocked.
+        if len(self.path) < 2 or self.path[1] in self.blocked:
+            self.path = self.pathfinder.find_path(
+                current, self.target, self.blocked
+            )
+
+        # No usable route exists.
+        if self.path is None or len(self.path) < 2:
+            return {"type": "WAIT"}
+
+        # Follow the next step of the route.
+        next_x, next_y = self.path[1]
+
+        return {
+            "type": "MOVE",
+            "dx": next_x - current[0],
+            "dy": next_y - current[1]
+        }
