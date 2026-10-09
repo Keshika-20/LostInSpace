@@ -1,4 +1,9 @@
-```gitignore
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Logs
 logs/
 *.log
@@ -25,8 +30,4 @@ __pycache__/
 .idea/
 .DS_Store
 *.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
-```
