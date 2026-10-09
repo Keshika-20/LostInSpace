@@ -1,11 +1,13 @@
-"""A* pathfinding on the rover's KNOWN map.
+"""Pathfinding on the rover's KNOWN map.
 
+find_path: A* to one goal. route_to_nearest: BFS to the nearest of several goals.
 Only cells the rover has seen and found free can be walked on.
 Unknown cells and known obstacles both count as walls.
 """
 
 import heapq
 import math
+from collections import deque
 
 from simulation.environment import DIRECTIONS, Position
 from simulation.exploration_map import ExplorationMap
@@ -53,6 +55,36 @@ def find_path(start: Position, goal: Position, known_map: ExplorationMap):
                 heapq.heappush(open_heap, (priority, new_steps, nxt))
 
     return None  # the whole reachable area was searched; the goal is not in it
+
+
+def route_to_nearest(start: Position, goals, known_map: ExplorationMap):
+    """Shortest route from start to whichever goal is closest, or None.
+
+    Uses BFS: one search covers every goal, which is cheaper than running A*
+    once per goal. Goals the rover has not seen as free cells are ignored.
+    Use it to find the nearest known communication-zone cell.
+    """
+    goal_set = {goal for goal in goals if known_map.is_known_free(goal)}
+    if not goal_set or not known_map.is_known_free(start):
+        return None
+    if start in goal_set:
+        return [start]
+
+    seen = {start}
+    came_from = {}
+    queue = deque([start])
+    while queue:
+        current = queue.popleft()
+        for d_row, d_col in DIRECTIONS:
+            nxt = (current[0] + d_row, current[1] + d_col)
+            if nxt in seen or not known_map.is_known_free(nxt):
+                continue
+            seen.add(nxt)
+            came_from[nxt] = current
+            if nxt in goal_set:
+                return _rebuild_route(came_from, nxt)
+            queue.append(nxt)
+    return None
 
 
 def _rebuild_route(came_from: dict, end: Position) -> list:

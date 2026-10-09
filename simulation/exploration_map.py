@@ -1,7 +1,8 @@
 """ExplorationMap: the rover's own notebook of what it has seen so far.
 
-Each cell is UNKNOWN, FREE or OBSTACLE (the last two reuse the codes from environment.py).
-Planning code (A*, target choice) must read ONLY this map, never the true grid.
+Each cell is UNKNOWN, FREE or OBSTACLE. It also remembers the resources and
+communication-zone cells the rover has seen. Planning code must read ONLY this
+map, never the true world.
 """
 
 from simulation.environment import DIRECTIONS, FREE, OBSTACLE, Environment, Position
@@ -14,6 +15,8 @@ class ExplorationMap:
         self.rows = rows
         self.cols = cols
         self._cells = [[UNKNOWN for _ in range(cols)] for _ in range(rows)]
+        self._resources = {}      # position -> Resource that was seen
+        self._zone_cells = set()  # communication-zone cells that were seen
 
     # ---------- read-only questions ----------
 
@@ -69,11 +72,27 @@ class ExplorationMap:
                         break
         return result
 
+    def known_resources(self) -> list:
+        """Resources the rover has seen and that are not collected yet (sorted by position).
+
+        Treat these as read-only; collecting goes through Environment.collect_resource.
+        """
+        return [resource for _, resource in sorted(self._resources.items())
+                if not resource.collected]
+
+    def is_known_zone(self, pos: Position) -> bool:
+        return pos in self._zone_cells
+
+    def known_zone_cells(self) -> list:
+        """Communication-zone cells the rover has seen (sorted)."""
+        return sorted(self._zone_cells)
+
     # ---------- updates ----------
 
     def observe(self, env: Environment, center: Position, radius: int = 2) -> int:
         """Copy the square of cells around center from the true world into this map.
 
+        Terrain, resources and zone cells inside the square are all refreshed.
         Returns how many cells were newly discovered.
         """
         if radius < 0:
@@ -81,13 +100,28 @@ class ExplorationMap:
         if env.rows != self.rows or env.cols != self.cols:
             raise ValueError("environment and map sizes do not match")
         center_row, center_col = center
+        uncollected = {resource.position: resource
+                       for resource in env.resources if not resource.collected}
         newly_seen = 0
         for row in range(max(0, center_row - radius), min(self.rows - 1, center_row + radius) + 1):
             for col in range(max(0, center_col - radius), min(self.cols - 1, center_col + radius) + 1):
+                pos = (row, col)
                 if self._cells[row][col] == UNKNOWN:
                     newly_seen += 1
                 # Always refresh, so a cell that changed since last time is updated too.
                 self._cells[row][col] = env.grid[row][col]
+
+                resource = uncollected.get(pos)
+                if resource is not None:
+                    resource.discovered = True
+                    self._resources[pos] = resource
+                else:
+                    self._resources.pop(pos, None)
+
+                if pos in env.zone_cells:
+                    self._zone_cells.add(pos)
+                else:
+                    self._zone_cells.discard(pos)
         return newly_seen
 
     def mark_obstacle(self, pos: Position) -> None:
