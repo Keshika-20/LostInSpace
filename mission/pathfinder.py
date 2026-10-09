@@ -15,15 +15,17 @@ class Pathfinder:
         if start == goal:
             return [start]
 
-        # Priority queue: (estimated total cost, position)
+        # Queue items: (priority, counter, position)
         open_list = []
-        heapq.heappush(open_list, (0, start))
+        counter = 0
+
+        heapq.heappush(open_list, (0, counter, start))
 
         came_from = {}
         cost_so_far = {start: 0}
 
         while open_list:
-            _, current = heapq.heappop(open_list)
+            _, _, current = heapq.heappop(open_list)
 
             if current == goal:
                 path = [current]
@@ -37,7 +39,7 @@ class Pathfinder:
 
             x, y = current
 
-            # Four possible directions.
+            # Explore right, left, down, and up in this order.
             neighbours = [
                 (x + 1, y),
                 (x - 1, y),
@@ -58,19 +60,17 @@ class Pathfinder:
                     cost_so_far[neighbour] = new_cost
                     came_from[neighbour] = current
 
+                    nx, ny = neighbour
                     gx, gy = goal
 
-                    # Manhattan distance heuristic.
-                    heuristic = abs(gx - neighbour[0]) + abs(
-                        gy - neighbour[1]
-                    )
-
+                    heuristic = abs(gx - nx) + abs(gy - ny)
                     priority = new_cost + heuristic
+
+                    counter += 1
 
                     heapq.heappush(
                         open_list,
-                        (priority, neighbour)
+                        (priority, counter, neighbour)
                     )
 
-        # No route exists.
         return None
