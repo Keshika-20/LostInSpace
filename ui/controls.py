@@ -1,14 +1,15 @@
-
 import pygame
+from ui import theme
 
 
 class Controls:
+    """Draw controls and convert mouse clicks into commands only."""
     def __init__(self):
-        self.font = pygame.font.SysFont("arial", 20)
+        self.font = pygame.font.SysFont("arial", 17, bold=True)
         self.buttons = {
-            "START": pygame.Rect(620, 400, 100, 40),
-            "PAUSE": pygame.Rect(730, 400, 100, 40),
-            "RESET": pygame.Rect(675, 455, 100, 40),
+            "START": pygame.Rect(610, 420, 105, 40),
+            "PAUSE": pygame.Rect(730, 420, 105, 40),
+            "RESET": pygame.Rect(672, 470, 105, 40),
         }
 
     def handle_event(self, event):
@@ -20,8 +21,7 @@ class Controls:
 
     def draw(self, screen):
         for command, rect in self.buttons.items():
-            pygame.draw.rect(screen, (45, 75, 110), rect, border_radius=6)
-            pygame.draw.rect(screen, (120, 170, 220), rect, 2, border_radius=6)
-
-            text = self.font.render(command, True, (255, 255, 255))
-            screen.blit(text, text.get_rect(center=rect.center))
+            pygame.draw.rect(screen, (37, 67, 97), rect, border_radius=7)
+            pygame.draw.rect(screen, (100, 175, 220), rect, 2, border_radius=7)
+            label = self.font.render(command, True, theme.TEXT)
+            screen.blit(label, label.get_rect(center=rect.center))

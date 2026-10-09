@@ -1,1 +1,1 @@
-"""Frontend UI package for Lost in Space."""
+"""Lost in Space UI package (Person 2)."""
