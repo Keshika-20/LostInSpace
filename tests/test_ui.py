@@ -44,8 +44,8 @@ def test_draw_map_returns_grid_rect():
                     route=[(0, 0), (0, 1), (1, 1)], target=(9, 9),
                     resources=[{"position": (1, 1), "value": 2, "data_size": 1,
                                 "discovered": True, "collected": False}])
-    assert rect.topleft == (50, 80)
-    assert rect.size == (480, 480)
+    assert rect.topleft == (50, 136)
+    assert rect.size == (440, 440)
 
 
 def test_invalid_grid_dimensions_raise():
