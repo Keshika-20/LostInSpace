@@ -35,8 +35,7 @@ class TargetSelector:
         if not candidates:
             return None
 
-        # If a goal is provided, prefer the candidate
-        # with the smallest Manhattan distance to it.
+        # Prefer the candidate closest to the goal.
         if goal is not None:
             candidates.sort(
                 key=lambda position:
