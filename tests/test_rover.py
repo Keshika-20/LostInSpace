@@ -1,14 +1,16 @@
 import pytest
 
-from simulation.environment import Environment
+from simulation.environment import OBSTACLE, Environment
 from simulation.rover import Rover
 
 
-def make_rover(start=(0, 0), energy=100.0):
+def make_rover(start=(0, 0), energy=100.0, vision_radius=2):
     env = Environment(10, 10)
     env.load_test_layout()
-    return Rover(env, start=start, energy=energy)
+    return Rover(env, start=start, energy=energy, vision_radius=vision_radius)
 
+
+# ---------- Stage 2: movement and energy ----------
 
 def test_legal_move_changes_position_and_energy():
     rover = make_rover()
@@ -103,3 +105,54 @@ def test_test_layout_wall():
     assert not env.is_traversable((7, 5))
     assert env.is_traversable((1, 5))
     assert env.is_traversable((8, 5))
+
+
+# ---------- Stage 3: the rover's own map ----------
+
+def test_rover_sees_around_start():
+    rover = make_rover()
+    assert rover.known_map.is_known_free((0, 0))
+    assert rover.known_map.is_known_free((2, 2))   # inside radius 2
+    assert not rover.known_map.is_known((3, 0))    # just outside
+
+
+def test_map_grows_after_a_move():
+    rover = make_rover()
+    assert not rover.known_map.is_known((0, 3))
+    rover.move_to((0, 1))
+    assert rover.known_map.is_known_free((0, 3))
+
+
+def test_rejected_move_reveals_nothing():
+    rover = make_rover()
+    seen_before = rover.known_map.explored_count()
+    rover.move_to((1, 1))  # diagonal, rejected
+    assert rover.known_map.explored_count() == seen_before
+
+
+def test_hidden_wall_stays_unknown_until_seen():
+    rover = make_rover()
+    assert not rover.known_map.is_known((2, 5))
+
+
+def test_bumping_a_wall_marks_it_known():
+    rover = make_rover(start=(3, 4), vision_radius=0)
+    assert not rover.known_map.is_known((3, 5))
+    result = rover.move_to((3, 5))
+    assert result.reason == "blocked"
+    assert rover.known_map.is_known_obstacle((3, 5))
+
+
+def test_far_invalid_move_does_not_leak_a_wall():
+    rover = make_rover(start=(3, 4), vision_radius=0)
+    result = rover.move_to((4, 5))  # diagonal AND a wall cell
+    assert result.reason == "not_adjacent"
+    assert not rover.known_map.is_known((4, 5))
+
+
+def test_reset_forgets_the_map():
+    rover = make_rover()
+    rover.move_to((0, 1))
+    assert rover.known_map.is_known((0, 3))
+    rover.reset()
+    assert not rover.known_map.is_known((0, 3))
