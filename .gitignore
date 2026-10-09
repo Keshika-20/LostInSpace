@@ -8,6 +8,17 @@ __pycache__/
 logs/
 *.log
 
+# Dependencies and build output
+dist/
+*.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Environment files
 .env
 .env.*

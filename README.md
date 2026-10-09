@@ -1,16 +1,46 @@
-# React + Vite
+# Lost in Space — Rover Mission Control
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Lost in Space is a student project to build a rover mission simulator with a
+grid-based view of an unexplored world. The project uses Python and Pygame.
 
-Currently, two official plugins are available:
+## Current status
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Stage 1 is in progress.** The team is preparing the project skeleton. The
+planned first stage is a Pygame window with a static 10×10 grid, a placeholder
+rover, title and status display, and quit handling. Movement, terrain
+generation, pathfinding, resource collection, and mission logic are not part
+of Stage 1.
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Python 3
+- Windows PowerShell
 
-## Expanding the Oxlint configuration
+## Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+From the project folder, create and activate a virtual environment:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the project dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+## Run and test
+
+Once the Stage 1 entry point is in place, start the application with:
+
+```powershell
+python main.py
+```
+
+Run the tests with:
+
+```powershell
+python -m pytest -q
+```
