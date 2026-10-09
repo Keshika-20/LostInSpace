@@ -15,7 +15,8 @@ def _position(rover_state):
 
 def draw_dashboard(screen, rover_state, simulation_running, target=None, moves=0,
                    explored_count=None, total_cells=None, replans=0,
-                   carried_data=None, target_value=None, mission_state=None):
+                   carried_data=None, target_value=None, mission_state=None,
+                   environment=None):
     title_font = pygame.font.SysFont("arial", 22, bold=True)
     font = pygame.font.SysFont("arial", 16)
     x, y = theme.PANEL_LEFT, 90
@@ -27,6 +28,9 @@ def draw_dashboard(screen, rover_state, simulation_running, target=None, moves=0
     status_color = theme.SUCCESS if simulation_running else theme.WARNING
     if mission_state is None:
         mission_state = getattr(rover_state, "mission_state", status)
+    if environment is not None:
+        explored_count = rover_state.known_map.known_free_count()
+        total_cells = environment.free_cell_count()
 
     lines = [
         (f"Position: ({row}, {col})", theme.TEXT),
@@ -37,8 +41,8 @@ def draw_dashboard(screen, rover_state, simulation_running, target=None, moves=0
         (f"Moves: {moves}", theme.TEXT),
         (f"Replans: {replans}", theme.TEXT),
     ]
-    if explored_count is not None and total_cells:
-        coverage = 100.0 * explored_count / total_cells
+    if explored_count is not None and total_cells is not None:
+        coverage = 100.0 * explored_count / total_cells if total_cells else 0.0
         lines.append((f"Explored: {explored_count}/{total_cells} ({coverage:.0f}%)", theme.TEXT))
     if carried_data is None:
         carried_data = getattr(rover_state, "carried_data", 0.0)
