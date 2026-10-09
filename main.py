@@ -11,6 +11,42 @@ from ui.dashboard import draw_dashboard
 from ui.map_renderer import draw_map
 
 
+MOVEMENT_KEYS = {
+    pygame.K_UP: (-1, 0),
+    pygame.K_DOWN: (1, 0),
+    pygame.K_LEFT: (0, -1),
+    pygame.K_RIGHT: (0, 1),
+}
+
+
+def process_input_event(event, controls, application):
+    """Apply one Pygame input event and return visible feedback, if any."""
+    command = controls.handle_event(event)
+    if command is not None:
+        application.handle_command(command)
+        return {
+            "START": "Simulation started.",
+            "PAUSE": "Simulation paused.",
+            "RESET": "Simulation reset.",
+        }[command]
+
+    if event.type != pygame.KEYDOWN or event.key not in MOVEMENT_KEYS:
+        return None
+    if not application.is_running:
+        return "Paused. Press START before moving."
+
+    row, col = application.rover.position
+    row_delta, col_delta = MOVEMENT_KEYS[event.key]
+    result = application.handle_command(
+        "MOVE",
+        (row + row_delta, col + col_delta),
+    )
+    if result.success:
+        return f"Moved to {application.rover.position}."
+    reason = result.reason.replace("_", " ")
+    return f"Move rejected: {reason}."
+
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((900, 650))
@@ -21,13 +57,7 @@ def main():
     controls = Controls()
     application = ApplicationController()
     running = True
-
-    movement_keys = {
-        pygame.K_UP: (-1, 0),
-        pygame.K_DOWN: (1, 0),
-        pygame.K_LEFT: (0, -1),
-        pygame.K_RIGHT: (0, 1),
-    }
+    feedback = "Start, then use arrow keys to move."
 
     try:
         while running:
@@ -36,20 +66,9 @@ def main():
                     running = False
                     continue
 
-                command = controls.handle_event(event)
-                if command is not None:
-                    application.handle_command(command)
-                elif (
-                    event.type == pygame.KEYDOWN
-                    and application.is_running
-                    and event.key in movement_keys
-                ):
-                    row, col = application.rover.position
-                    row_delta, col_delta = movement_keys[event.key]
-                    application.handle_command(
-                        "MOVE",
-                        (row + row_delta, col + col_delta),
-                    )
+                event_feedback = process_input_event(event, controls, application)
+                if event_feedback is not None:
+                    feedback = event_feedback
 
             environment = application.environment
             rover = application.rover
@@ -67,14 +86,7 @@ def main():
 
             screen.fill(theme.BACKGROUND)
             screen.blit(title_font.render("LOST IN SPACE", True, theme.ACCENT), (50, 24))
-            screen.blit(
-                small_font.render(
-                    "Start, then use arrow keys to move • Pause stops movement",
-                    True,
-                    theme.MUTED_TEXT,
-                ),
-                (50, 54),
-            )
+            screen.blit(small_font.render(feedback, True, theme.ACCENT), (50, 56))
             draw_map(
                 screen,
                 rover,
