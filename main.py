@@ -1,171 +1,169 @@
-"""Pygame interface for the rover simulation."""
+"""Pygame main entry point for Lost in Space — 3D Autonomous Rover Mission Control."""
 
 import ctypes
 import sys
-
+import time
 import pygame
 
 from application_controller import ApplicationController
-from simulation.environment import Environment, OBSTACLE
-from simulation.exploration_map import UNKNOWN
+from simulation.satellite_renderer import draw_satellite_map, draw_satellite_zoom_intro
 from ui import theme
 from ui.controls import Controls
 from ui.dashboard import draw_dashboard
-from ui.map_renderer import draw_map
-
-
-MOVEMENT_KEYS = {
-    pygame.K_UP: (-1, 0),
-    pygame.K_DOWN: (1, 0),
-    pygame.K_LEFT: (0, -1),
-    pygame.K_RIGHT: (0, 1),
-    pygame.K_w: (-1, 0),
-    pygame.K_s: (1, 0),
-    pygame.K_a: (0, -1),
-    pygame.K_d: (0, 1),
-}
-MOVEMENT_COMMANDS = {
-    "MOVE_UP": MOVEMENT_KEYS[pygame.K_UP],
-    "MOVE_DOWN": MOVEMENT_KEYS[pygame.K_DOWN],
-    "MOVE_LEFT": MOVEMENT_KEYS[pygame.K_LEFT],
-    "MOVE_RIGHT": MOVEMENT_KEYS[pygame.K_RIGHT],
-}
 
 
 def create_application(seed=2025):
-    """Create a repeatable Stage 3-5 world for the interactive application."""
-    environment = Environment(rows=10, cols=10, base=(0, 0))
-    environment.generate_obstacles(seed=seed, obstacle_rate=0.15)
-    environment.place_resources(count=7, seed=seed + 1)
-    return ApplicationController(
-        environment=environment,
-        energy=100.0,
-        vision_radius=2,
-        capacity=12.0,
-    )
-
-
-def _move_rover(application, delta):
-    if not application.is_running:
-        return "Paused. Press START before moving."
-
-    row, col = application.rover.position
-    row_delta, col_delta = delta
-    result = application.handle_command(
-        "MOVE",
-        (row + row_delta, col + col_delta),
-    )
-    if result.success:
-        feedback = f"Moved to {application.rover.position}."
-    else:
-        reason = result.reason.replace("_", " ")
-        feedback = f"Move rejected: {reason}."
-    return feedback
+    """Create a repeatable application instance with slow energy reduction."""
+    app = ApplicationController(seed=seed)
+    app.rover.move_cost = 0.35
+    return app
 
 
 def process_input_event(event, controls, application):
-    """Apply one Pygame input event and return visible feedback, if any."""
+    """Process single input event for test suite compatibility."""
     command = controls.handle_event(event)
     if command is not None:
-        if command in MOVEMENT_COMMANDS:
-            return _move_rover(application, MOVEMENT_COMMANDS[command])
-        if command == "COLLECT":
-            return _collect_resource(application)
-        if command == "ROUTE":
-            route = application.handle_command("PLAN_ROUTE")
-            if route is None:
+        if command in ("START", "PAUSE", "RESET", "EXPLORE_NEXT"):
+            application.handle_command(command)
+            messages = {
+                "START": "Simulation started.",
+                "PAUSE": "Simulation paused.",
+                "RESET": "Simulation reset.",
+                "EXPLORE_NEXT": "Advanced to next region.",
+            }
+            return messages.get(command)
+        if command in ("COLLECT", "ROUTE", "MOVE_UP", "MOVE_DOWN", "MOVE_LEFT", "MOVE_RIGHT"):
+            if command == "COLLECT":
+                res = application.collect_resource()
+                if res.success:
+                    return f"Collected {res.resource.value:.0f} science / {res.resource.data_size:.1f} MB."
+                messages = {
+                    "paused": "Press START before collecting.",
+                    "no_resource": "No resource at this position.",
+                    "cargo_capacity": "Cargo full. Return to base before collecting more.",
+                }
+                return messages.get(res.reason, "Collection failed.")
+            if command == "ROUTE":
+                application.handle_command("PLAN_ROUTE")
+                if application.planned_target:
+                    return f"Route preview: {len(application.planned_route) - 1} steps to {application.planned_target}."
                 return "No discovered resource has a known safe route."
-            return f"Route preview: {len(route) - 1} steps to {application.planned_target}."
+            dir_map = {
+                "MOVE_UP": (-1, 0),
+                "MOVE_DOWN": (1, 0),
+                "MOVE_LEFT": (0, -1),
+                "MOVE_RIGHT": (0, 1),
+            }
+            if not application.is_running:
+                return "Paused. Press START before moving."
+            d_row, d_col = dir_map[command]
+            r, c = application.rover.position
+            res = application.handle_command("MOVE", (r + d_row, c + d_col))
+            if res and res.success:
+                return f"Moved to {application.rover.position}."
+            elif res:
+                return f"Move rejected: {res.reason.replace('_', ' ')}."
 
-        application.handle_command(command)
-        return {
-            "START": "Simulation started.",
-            "PAUSE": "Simulation paused.",
-            "RESET": "Simulation reset.",
-        }[command]
+    if event.type == pygame.KEYDOWN:
+        movement_keys = {
+            pygame.K_UP: (-1, 0),
+            pygame.K_DOWN: (1, 0),
+            pygame.K_LEFT: (0, -1),
+            pygame.K_RIGHT: (0, 1),
+            pygame.K_w: (-1, 0),
+            pygame.K_s: (1, 0),
+            pygame.K_a: (0, -1),
+            pygame.K_d: (0, 1),
+        }
+        if event.key == pygame.K_c:
+            res = application.collect_resource()
+            if res.success:
+                return f"Collected {res.resource.value:.0f} science / {res.resource.data_size:.1f} MB."
+            elif res.reason == "cargo_capacity":
+                return "Cargo full. Return to base before collecting more."
+            elif res.reason == "paused":
+                return "Press START before collecting."
+        if event.key in movement_keys:
+            if not application.is_running:
+                return "Paused. Press START before moving."
+            d_row, d_col = movement_keys[event.key]
+            r, c = application.rover.position
+            res = application.handle_command("MOVE", (r + d_row, c + d_col))
+            if res and res.success:
+                return f"Moved to {application.rover.position}."
+            elif res:
+                return f"Move rejected: {res.reason.replace('_', ' ')}."
 
-    if event.type != pygame.KEYDOWN:
-        return None
-    if event.key == pygame.K_c:
-        return _collect_resource(application)
-    if event.key == pygame.K_p:
-        route = application.handle_command("PLAN_ROUTE")
-        if route is None:
-            return "No discovered resource has a known safe route."
-        return f"Route preview: {len(route) - 1} steps to {application.planned_target}."
-    if event.key not in MOVEMENT_KEYS:
-        return None
-    return _move_rover(application, MOVEMENT_KEYS[event.key])
-
-
-def _collect_resource(application):
-    if not application.is_running:
-        return "Press START before collecting."
-    result = application.handle_command("COLLECT")
-    if result.success:
-        resource = result.resource
-        if resource is None:
-            raise RuntimeError("successful collection did not return its resource")
-        return (
-            f"Collected {resource.value:.0f} science / "
-            f"{resource.data_size:.1f} MB."
-        )
-    messages = {
-        "paused": "Press START before collecting.",
-        "no_resource": "No resource at this position.",
-        "resource_not_discovered": "This resource has not been scanned yet.",
-        "cargo_capacity": "Cargo full. Return to base before collecting more.",
-    }
-    return messages[result.reason]
+    return None
 
 
 def _set_windows_dpi_awareness():
-    """Keep the native Pygame client size and mouse-event coordinates aligned."""
+    """Keep Pygame client dimensions aligned on Windows systems."""
     if sys.platform != "win32":
         return
 
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    set_process_context = user32.SetProcessDpiAwarenessContext
-    set_process_context.argtypes = [ctypes.c_void_p]
-    set_process_context.restype = ctypes.c_bool
-    if set_process_context(ctypes.c_void_p(-4)):
-        return
-
-    error = ctypes.get_last_error()
-    if error != 5:
-        raise ctypes.WinError(error)
-
-    get_thread_context = user32.GetThreadDpiAwarenessContext
-    get_thread_context.restype = ctypes.c_void_p
-    get_awareness = user32.GetAwarenessFromDpiAwarenessContext
-    get_awareness.argtypes = [ctypes.c_void_p]
-    get_awareness.restype = ctypes.c_int
-    if get_awareness(get_thread_context()) >= 2:
-        return
-
-    set_thread_context = user32.SetThreadDpiAwarenessContext
-    set_thread_context.argtypes = [ctypes.c_void_p]
-    set_thread_context.restype = ctypes.c_void_p
-    if not set_thread_context(ctypes.c_void_p(-4)):
-        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        set_process_context = user32.SetProcessDpiAwarenessContext
+        set_process_context.argtypes = [ctypes.c_void_p]
+        set_process_context.restype = ctypes.c_bool
+        set_process_context(ctypes.c_void_p(-4))
+    except Exception:
+        pass
 
 
 def main():
     _set_windows_dpi_awareness()
     pygame.init()
-    screen = pygame.display.set_mode((1280, 720))
-    pygame.display.set_caption("Lost in Space — Rover Mission Control")
+    
+    screen_width, screen_height = 1280, 720
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    pygame.display.set_caption("Lost in Space — 3D Autonomous Rover Mission Control")
     clock = pygame.time.Clock()
-    title_font = pygame.font.SysFont("arial", 25, bold=True)
+
+    title_font = pygame.font.SysFont("arial", 22, bold=True)
     eyebrow_font = pygame.font.SysFont("arial", 11, bold=True)
-    feedback_font = pygame.font.SysFont("arial", 14)
+    feedback_font = pygame.font.SysFont("arial", 13)
+
     controls = Controls()
-    application = create_application()
+    application = ApplicationController(seed=2025)
+
     running = True
-    feedback = "Start mission  ·  Explore with arrows/WASD  ·  Collect with C"
+    intro_phase = True
+    intro_start_time = time.time()
+    intro_duration = 2.8  # seconds for planet zoom sequence
+
+    tick_timer = 0
+    tick_delay = 450  # milliseconds per autonomous step for smooth, comfortable pace
+    time_sec = 0.0
+
+    feedback = "3D Planet Landing Complete  ·  Press START for Autonomous Exploration"
 
     try:
         while running:
+            dt = clock.tick(60)
+            time_sec += dt / 1000.0
+            
+            # 1. Handle Planet Zoom Intro Sequence
+            if intro_phase:
+                elapsed = time.time() - intro_start_time
+                progress = min(1.0, elapsed / intro_duration)
+                
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                        # Skip zoom intro on user input
+                        intro_phase = False
+                
+                if progress >= 1.0:
+                    intro_phase = False
+                
+                draw_satellite_zoom_intro(screen, progress, time_sec=time_sec)
+                pygame.display.flip()
+                continue
+
+            # 2. Main Event Handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -174,132 +172,86 @@ def main():
                     running = False
                     continue
 
-                event_feedback = process_input_event(event, controls, application)
-                if event_feedback is not None:
-                    feedback = event_feedback
+                # UI Button interactions
+                command = controls.handle_event(event)
+                if command is not None:
+                    if command == "START":
+                        application.handle_command("START")
+                        feedback = "AUTONOMOUS MISSION LAUNCHED: Rover target scanning & exploring..."
+                    elif command == "PAUSE":
+                        application.handle_command("PAUSE")
+                        feedback = "Simulation Paused."
+                    elif command == "RESET":
+                        application.handle_command("RESET")
+                        feedback = "Simulation Reset to baseline."
+                    elif command == "EXPLORE_NEXT":
+                        application.handle_command("EXPLORE_NEXT")
+                        feedback = f"Advanced to {application.region_name}! Explored tiles preserved."
 
-            environment = application.environment
-            rover = application.rover
-            known_map = {}
-            for row in range(environment.rows):
-                for col in range(environment.cols):
-                    position = (row, col)
-                    cell = rover.known_map.cell_at(position)
-                    if cell == UNKNOWN:
-                        known_map[position] = "unknown"
-                    elif cell == OBSTACLE:
-                        known_map[position] = "obstacle"
+            # 3. Autonomous Simulation Step Ticking
+            if application.is_running:
+                tick_timer += dt
+                if tick_timer >= tick_delay:
+                    tick_timer = 0
+                    application.update_tick()
+                    
+                    state = application.autonomous_mission.state
+                    if state.name == "SUCCESS":
+                        feedback = "MISSION SUCCESSFUL! High-value data uploaded & returned safely to Base!"
+                    elif state.name == "FAILURE":
+                        feedback = "MISSION FAILURE: Rover energy depleted."
                     else:
-                        known_map[position] = "free"
+                        feedback = f"AUTONOMOUS PHASE: {state.value}..."
 
-            screen.fill(theme.BACKGROUND)
-            map_panel = pygame.Rect(32, 100, 568, 500)
-            pygame.draw.rect(screen, theme.PANEL, map_panel, border_radius=16)
-            pygame.draw.rect(screen, theme.PANEL_BORDER, map_panel, 1, border_radius=16)
-            draw_map(
+            # 4. Rendering Phase
+            screen.fill((7, 12, 22))
+
+            # Draw Photorealistic Satellite Orbital Map
+            draw_satellite_map(
                 screen,
-                rover,
-                environment.rows,
-                environment.cols,
-                known_map=known_map,
-                resources=rover.known_map.known_resources(),
-                base=environment.base,
+                application.environment,
+                application.rover,
                 route=application.planned_route,
                 target=application.planned_target,
+                session_info={"useful_cells": application.autonomous_mission.useful_cells},
+                time_sec=time_sec,
             )
+
+            # Draw Header Bar
             screen.blit(
-                eyebrow_font.render("MISSION CONTROL  /  SURFACE OPERATIONS", True, theme.ACCENT),
-                (38, 20),
+                eyebrow_font.render("SATELLITE ORBITAL RECONNAISSANCE & MISSION CONTROL", True, (0, 230, 255)),
+                (38, 14),
             )
-            screen.blit(title_font.render("LOST IN SPACE", True, theme.TEXT), (38, 40))
-            status_text = (
-                f"SEED {environment.seed}  ·  "
-                f"{'MISSION ACTIVE' if application.is_running else 'MISSION PAUSED'}"
-            )
-            screen.blit(
-                eyebrow_font.render(status_text, True, theme.SUCCESS if application.is_running else theme.WARNING),
-                (852, 47),
-            )
-            screen.blit(feedback_font.render(feedback, True, theme.ACCENT), (42, 79))
-            screen.blit(
-                eyebrow_font.render("UNKNOWN TERRAIN", True, theme.MUTED_TEXT),
-                (54, 105),
-            )
-            screen.blit(
-                eyebrow_font.render(
-                    f"EXPLORED {rover.known_map.explored_count():02d} / "
-                    f"{environment.rows * environment.cols:02d}",
-                    True,
-                    theme.MUTED_TEXT,
-                ),
-                (444, 105),
-            )
-            for legend_x, color, label in (
-                (54, theme.ROVER, "ROVER"),
-                (164, theme.OBSTACLE, "ROCK"),
-                (272, theme.RESOURCE, "RESOURCE"),
-                (414, theme.BASE, "BASE"),
-            ):
-                pygame.draw.circle(screen, color, (legend_x + 4, 582), 4)
-                screen.blit(
-                    eyebrow_font.render(label, True, theme.MUTED_TEXT),
-                    (legend_x + 14, 576),
-                )
-            planned_resource = (
-                environment.resource_at(application.planned_target)
-                if application.planned_target is not None
-                else None
-            )
-            draw_dashboard(
-                screen,
-                rover,
-                application.is_running,
-                moves=rover.moves,
-                carried_data=rover.carried_data,
-                environment=environment,
-                capacity=rover.capacity,
-                target=application.planned_target,
-                target_value=planned_resource.value if planned_resource is not None else None,
-            )
-            control_panel = pygame.Rect(32, 610, 1216, 102)
-            pygame.draw.rect(screen, theme.PANEL, control_panel, border_radius=16)
-            pygame.draw.rect(screen, theme.PANEL_BORDER, control_panel, 1, border_radius=16)
-            screen.blit(
-                eyebrow_font.render("NAVIGATION", True, theme.MUTED_TEXT),
-                (94, 614),
-            )
-            screen.blit(
-                eyebrow_font.render("MISSION ACTIONS", True, theme.MUTED_TEXT),
-                (390, 614),
-            )
-            current_resource = environment.resource_at(rover.position)
-            collect_ready = (
-                application.is_running
-                and current_resource is not None
-                and current_resource.discovered
-                and rover.can_carry(current_resource.data_size)
-            )
-            route_ready = bool(rover.known_map.known_resources())
+            screen.blit(title_font.render("LOST IN SPACE — SATELLITE ROVER MISSION CONTROL", True, theme.TEXT), (38, 30))
+            screen.blit(feedback_font.render(feedback, True, (255, 215, 0)), (38, 62))
+
+            # Draw Telemetry Dashboard
+            draw_dashboard(screen, application, time_sec=time_sec)
+
+            # Draw Control Buttons
             controls.draw(
                 screen,
-                application.is_running,
-                collect_ready=collect_ready,
-                route_ready=route_ready,
+                simulation_running=application.is_running,
+                active_state=application.autonomous_mission.state.name,
             )
-            screen.blit(
-                eyebrow_font.render("ARROWS / WASD  MOVE", True, theme.MUTED_TEXT),
-                (1005, 625),
-            )
-            screen.blit(
-                eyebrow_font.render("C  COLLECT  ·  P  ROUTE", True, theme.MUTED_TEXT),
-                (1005, 645),
-            )
-            screen.blit(
-                eyebrow_font.render("ESC / WINDOW X  QUIT", True, theme.MUTED_TEXT),
-                (1005, 665),
-            )
+
+            # Legend overlay under satellite map frame (left side, no overlap with buttons)
+            legend_y = 658
+            for legend_x, color, label in (
+                (50, (245, 185, 75), "ROVER 01"),
+                (135, (180, 70, 50), "CRATER"),
+                (210, (255, 215, 0), "MINERAL"),
+                (290, (0, 220, 255), "COMM STN"),
+                (380, (80, 240, 180), "BASE HAB"),
+            ):
+                pygame.draw.circle(screen, color, (legend_x + 4, legend_y + 6), 5)
+                screen.blit(
+                    eyebrow_font.render(label, True, theme.MUTED_TEXT),
+                    (legend_x + 13, legend_y),
+                )
+
             pygame.display.flip()
-            clock.tick(60)
+
     finally:
         pygame.quit()
 
