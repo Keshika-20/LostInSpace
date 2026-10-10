@@ -113,14 +113,22 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
     """Render photorealistic Satellite View of terrain, grid, assets, and HUD status."""
     renderer = get_satellite_renderer()
     
-    # Dimensions & Position of Satellite Map Frame
-    grid_left = 50
-    grid_top = 110
+    screen_w, screen_h = screen.get_width(), screen.get_height()
+    # Minimized right-side panel width (~370-390px, leaving 70%+ of screen width for the grid)
+    minimized_panel_w = min(390, max(360, int(screen_w * 0.28))) if screen_w >= 1000 else 380
+    panel_x = screen_w - minimized_panel_w - 16
+    margin_left = 40
+    avail_w = panel_x - margin_left - 18
+    avail_h = screen_h - 90 - 40  # 90px top header bar, 40px bottom legend
+
+    max_map_dim = min(avail_w, avail_h)
     rows, cols = environment.rows, environment.cols
-    cell_size = min(54, 530 // max(rows, cols))
+    cell_size = max(36, max_map_dim // max(rows, cols))
     map_w = cols * cell_size
     map_h = rows * cell_size
-    
+
+    grid_left = margin_left + max(0, (avail_w - map_w) // 2)
+    grid_top = 88 + max(0, (avail_h - map_h) // 2)
     map_rect = pygame.Rect(grid_left, grid_top, map_w, map_h)
 
     # 1. Satellite Base Texture
@@ -196,23 +204,62 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
                 base_rect = cell_rect.inflate(-8, -8)
                 pygame.draw.rect(screen, (25, 120, 90), base_rect, border_radius=6)
                 pygame.draw.rect(screen, (80, 240, 180), base_rect, 2, border_radius=6)
-                font_b = pygame.font.SysFont("arial", 10, bold=True)
-                screen.blit(font_b.render("BASE", True, (255, 255, 255)), (cell_x + 10, cell_y + 18))
+                font_b = pygame.font.SysFont("segoe ui", 12, bold=True)
+                screen.blit(font_b.render("BASE", True, (255, 255, 255)), (cell_x + 8, cell_y + 16))
 
     # 2. Atmospheric Satellite Fog-of-War Layer
     for r in range(rows):
         for c in range(cols):
             pos = (r, c)
-            if rover.known_map.cell_at(pos) == -1:  # UNKNOWN
+            # Fog of war covers unvisited cells (communication zones remain visible through satellite telemetry)
+            if rover.known_map.cell_at(pos) == -1 and not environment.in_comm_zone(pos):
                 cell_x = grid_left + c * cell_size
                 cell_y = grid_top + r * cell_size
                 fog = pygame.Surface((cell_size, cell_size), pygame.SRCALPHA)
                 fog.fill((8, 12, 22, 230))
                 screen.blit(fog, (cell_x, cell_y))
                 # Satellite scanning grid pattern for unknown cells
-                pygame.draw.rect(screen, (18, 28, 48), (cell_x, cell_y, cell_size, cell_size), 1)
+                pygame.draw.rect(screen, (22, 34, 56), (cell_x, cell_y, cell_size, cell_size), 1)
 
-    # 3. Satellite Lat / Long Grid Ticks
+    # 3. Always-Visible Communication Relay Zones (Orbital Uplink Stations)
+    tag_font = pygame.font.SysFont("segoe ui", 12, bold=True)
+    cz_list = sorted(list(environment.zone_cells))
+    for idx, pos in enumerate(cz_list):
+        r, c = pos
+        cell_x = grid_left + c * cell_size
+        cell_y = grid_top + r * cell_size
+        cell_rect = pygame.Rect(cell_x, cell_y, cell_size, cell_size)
+
+        pulse = int(40 * math.sin(time_sec * 4.5 + idx * 2.0))
+        g_val = max(0, min(255, 170 + pulse))
+        b_val = max(0, min(255, 220 + pulse))
+        
+        # Glowing beacon base
+        cz_surf = pygame.Surface((cell_size, cell_size), pygame.SRCALPHA)
+        cz_surf.fill((0, g_val, b_val, 130))
+        screen.blit(cz_surf, (cell_x, cell_y))
+        pygame.draw.rect(screen, (0, 240, 255), cell_rect, 2, border_radius=4)
+
+        # Concentric radio signal pulse rings
+        wave_r1 = int(10 + 12 * ((time_sec * 1.5 + idx * 0.3) % 1.0))
+        wave_alpha = int(220 * (1.0 - ((time_sec * 1.5 + idx * 0.3) % 1.0)))
+        s_ring = pygame.Surface((wave_r1 * 2 + 4, wave_r1 * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(s_ring, (0, 240, 255, wave_alpha), (wave_r1 + 2, wave_r1 + 2), wave_r1, 2)
+        screen.blit(s_ring, (cell_rect.centerx - wave_r1 - 2, cell_rect.centery - wave_r1 - 2))
+
+        # Comm Dish graphic
+        if renderer.comm_tex:
+            comm_icon = pygame.transform.scale(renderer.comm_tex, (cell_size - 8, cell_size - 8))
+            screen.blit(comm_icon, (cell_x + 4, cell_y + 4))
+        else:
+            pygame.draw.circle(screen, (0, 240, 255), cell_rect.center, cell_size // 3, 2)
+            pygame.draw.circle(screen, (220, 255, 255), cell_rect.center, 5)
+
+        # Clear high-visibility station label
+        lbl_comm = tag_font.render(f"📡 COMM STN #{idx + 1} (R{r},C{c})", True, (0, 245, 255))
+        screen.blit(lbl_comm, (cell_x - 18, cell_y - 14))
+
+    # 4. Satellite Lat / Long Grid Ticks
     grid_color = (60, 90, 120)
     for r in range(rows + 1):
         y = grid_top + r * cell_size
@@ -221,16 +268,16 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
         x = grid_left + c * cell_size
         pygame.draw.line(screen, grid_color, (x, grid_top), (x, grid_top + map_h), 1)
 
-    # Coordinate Header Labels
-    label_font = pygame.font.SysFont("consolas", 11, bold=True)
+    # Coordinate Header Labels (Large, Crisp)
+    coord_font = pygame.font.SysFont("segoe ui", 12, bold=True)
     for c in range(cols):
         cx = grid_left + c * cell_size + cell_size // 2 - 10
-        screen.blit(label_font.render(f"C{c:02d}", True, theme.MUTED_TEXT), (cx, grid_top - 16))
+        screen.blit(coord_font.render(f"C{c:02d}", True, theme.MUTED_TEXT), (cx, grid_top - 18))
     for r in range(rows):
-        ry = grid_top + r * cell_size + cell_size // 2 - 6
-        screen.blit(label_font.render(f"R{r:02d}", True, theme.MUTED_TEXT), (grid_left - 32, ry))
+        ry = grid_top + r * cell_size + cell_size // 2 - 8
+        screen.blit(coord_font.render(f"R{r:02d}", True, theme.MUTED_TEXT), (grid_left - 34, ry))
 
-    # 4. Route Ribbon (Satellite Trajectory Line)
+    # 5. Route Ribbon (Satellite Trajectory Line)
     route = list(route or [])
     if len(route) > 1:
         pts = [
@@ -239,38 +286,75 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
         ]
         pygame.draw.lines(screen, (0, 230, 255), False, pts, 3)
 
-    # 5. Science Resource Nodes (Color-Differentiated Mineral Spectrograph Hotspots)
-    for res in rover.known_map.known_resources():
-        if res.collected:
+    # 6. Minerals Exploration: Hidden until visited, then SHOWN ALWAYS
+    mineral_font = pygame.font.SysFont("segoe ui", 13, bold=True)
+    badge_font = pygame.font.SysFont("segoe ui", 11, bold=True)
+
+    for res in environment.resources:
+        # Check if cell has been visited / observed
+        is_visited = getattr(res, "discovered", False) or (rover.known_map.cell_at(res.position) != -1)
+        if not is_visited:
+            # ONLY till visiting it must not be visible
             continue
+
+        # Once that zone is visited, mark discovered so it is shown always!
+        res.discovered = True
+
         r, c = res.position
         rx = grid_left + c * cell_size + cell_size // 2
         ry = grid_top + r * cell_size + cell_size // 2
         val = res.value
-        
-        if val >= 70:
-            m_name, res_color, icon = "Rare Isotope", (255, 215, 0), "💎"
+        m_name = getattr(res, "name", "") or ("Gold Ore" if val >= 70 else "Mineral")
+        is_high = val >= 70
+        is_collected = getattr(res, "collected", False)
+
+        # Color & Styling based on mineral tier
+        if val >= 85:
+            res_color = (255, 215, 0)      # Vivid Gold
+        elif val >= 75:
+            res_color = (235, 120, 255)    # Rare Platinum / Isotope
         elif val >= 50:
-            m_name, res_color, icon = "Hydrated Min", (0, 230, 255), "💧"
-        elif val >= 30:
-            m_name, res_color, icon = "Titanium Core", (235, 90, 240), "🪨"
+            res_color = (0, 230, 255)      # Copper / Hydrated
+        elif val >= 35:
+            res_color = (255, 160, 60)     # Titanium Vein
         else:
-            m_name, res_color, icon = "Regolith Sample", (80, 240, 160), "🧪"
+            res_color = (90, 240, 160)     # Regolith / Quartz
 
-        glow_radius = int(12 + 4 * math.sin(time_sec * 5.0 + r + c))
-        
-        # Spectrograph halo
-        s_halo = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-        pygame.draw.circle(s_halo, (*res_color, 120), (glow_radius, glow_radius), glow_radius)
-        screen.blit(s_halo, (rx - glow_radius, ry - glow_radius))
+        # Highlight High Mineral Area in prominent, striking manner
+        if is_high and not is_collected:
+            # Multi-layer radiant golden pulse aura
+            high_pulse_r = int(18 + 7 * math.sin(time_sec * 6.0 + r * 3 + c))
+            s_high = pygame.Surface((high_pulse_r * 2 + 4, high_pulse_r * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(s_high, (255, 215, 0, 95), (high_pulse_r + 2, high_pulse_r + 2), high_pulse_r)
+            pygame.draw.circle(s_high, (255, 245, 130, 180), (high_pulse_r + 2, high_pulse_r + 2), high_pulse_r, 2)
+            screen.blit(s_high, (rx - high_pulse_r - 2, ry - high_pulse_r - 2))
 
-        pygame.draw.circle(screen, res_color, (rx, ry), 7)
-        pygame.draw.circle(screen, (255, 255, 255), (rx, ry), 3)
+            # Prominent Highlight Badge
+            badge_txt = badge_font.render("★ HIGH MINERAL ★", True, (255, 235, 80))
+            badge_bg = pygame.Rect(rx - 38, ry - 30, badge_txt.get_width() + 8, 14)
+            pygame.draw.rect(screen, (40, 30, 10, 220), badge_bg, border_radius=3)
+            pygame.draw.rect(screen, (255, 215, 0), badge_bg, 1, border_radius=3)
+            screen.blit(badge_txt, (rx - 34, ry - 30))
 
-        # Mineral Name & Value Tag
-        tag_f = pygame.font.SysFont("arial", 10, bold=True)
-        txt = tag_f.render(f"{m_name} ({int(val)} MB)", True, res_color)
-        screen.blit(txt, (rx - 28, ry - 20))
+        if not is_collected:
+            # Active mineral deposit
+            glow_r = int(12 + 4 * math.sin(time_sec * 5.0 + r + c))
+            s_halo = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_halo, (*res_color, 120), (glow_r, glow_r), glow_r)
+            screen.blit(s_halo, (rx - glow_r, ry - glow_r))
+
+            pygame.draw.circle(screen, res_color, (rx, ry), 8)
+            pygame.draw.circle(screen, (255, 255, 255), (rx, ry), 3)
+
+            # Mineral name and yield label
+            txt_lbl = mineral_font.render(f"{m_name} ({int(val)} MB)", True, res_color)
+            screen.blit(txt_lbl, (rx - 30, ry - 16 if not is_high else ry - 14))
+        else:
+            # Collected mineral stays permanently visible as cataloged/surveyed site
+            pygame.draw.circle(screen, (100, 125, 145), (rx, ry), 6, 2)
+            pygame.draw.circle(screen, (80, 220, 150), (rx, ry), 3)
+            txt_done = badge_font.render(f"✓ {m_name}", True, (140, 180, 200))
+            screen.blit(txt_done, (rx - 24, ry - 16))
 
     # 6. Target Reticle
     if target:
@@ -282,12 +366,25 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
 
     # 7. Satellite Radar Sweep Line
     radar_angle = time_sec * 1.5
-    sweep_end_x = map_rect.centerx + int(320 * math.cos(radar_angle))
-    sweep_end_y = map_rect.centery + int(320 * math.sin(radar_angle))
+    radar_len = max(map_w, map_h) // 2
+    sweep_end_x = map_rect.centerx + int(radar_len * math.cos(radar_angle))
+    sweep_end_y = map_rect.centery + int(radar_len * math.sin(radar_angle))
     radar_surf = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
     pygame.draw.line(radar_surf, (0, 220, 255, 45), (map_w // 2, map_h // 2),
                      (sweep_end_x - grid_left, sweep_end_y - grid_top), 2)
     screen.blit(radar_surf, map_rect.topleft)
+
+    # Tactical Frame border around map with corner brackets
+    pygame.draw.rect(screen, (0, 180, 230), map_rect, 2, border_radius=6)
+    bracket_len = 16
+    for corner_x, corner_y, dx, dy in (
+        (map_rect.left, map_rect.top, 1, 1),
+        (map_rect.right, map_rect.top, -1, 1),
+        (map_rect.left, map_rect.bottom, 1, -1),
+        (map_rect.right, map_rect.bottom, -1, -1),
+    ):
+        pygame.draw.line(screen, (0, 240, 255), (corner_x, corner_y), (corner_x + dx * bracket_len, corner_y), 3)
+        pygame.draw.line(screen, (0, 240, 255), (corner_x, corner_y), (corner_x, corner_y + dy * bracket_len), 3)
 
     # 8. Satellite Rover Vehicle Rendering
     rr, rc = rover.position
@@ -319,8 +416,8 @@ def draw_satellite_map(screen, environment, rover, route=None, target=None, sess
     screen.blit(cone_surf, (rover_x - cell_size, rover_y - cell_size))
 
     # Rover Label
-    r_lbl_font = pygame.font.SysFont("arial", 11, bold=True)
+    r_lbl_font = pygame.font.SysFont("segoe ui", 12, bold=True)
     r_lbl = r_lbl_font.render("ROVER 01", True, (245, 195, 80))
-    screen.blit(r_lbl, (rover_x - 22, rover_y + 14))
+    screen.blit(r_lbl, (rover_x - 24, rover_y + 14))
 
     return map_rect

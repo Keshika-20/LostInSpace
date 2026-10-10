@@ -54,4 +54,35 @@ def test_multi_region_exploration_persistence():
 
 def test_comm_zone_placement():
     app = ApplicationController(seed=2025)
-    assert len(app.environment.zone_cells) > 0
+    assert len(app.environment.zone_cells) >= 3
+
+
+def test_energy_precheck_prevents_mission_failure(capsys):
+    app = ApplicationController(seed=2025)
+    # Set low energy so reaching distant targets would cause mission failure
+    app.rover.energy = 8.0
+    app.start_autonomous_mission()
+
+    # Step autonomous mission
+    app.autonomous_mission.step()
+
+    # Check stdout and logs for required exact warning
+    captured = capsys.readouterr()
+    assert "If reached, mission failure may occur" in captured.out
+    assert any("If reached, mission failure may occur" in log for log in app.autonomous_mission.logs)
+
+
+def test_persistent_minerals_and_naming():
+    app = ApplicationController(seed=2025)
+    assert len(app.environment.resources) >= 18
+    # Verify resources have assigned mineral names
+    assert all(hasattr(r, "name") and len(r.name) > 0 for r in app.environment.resources)
+
+    # Pick a resource and observe it
+    target_res = app.environment.resources[0]
+    app.rover.known_map.observe(app.environment, target_res.position, radius=2)
+    assert target_res.discovered is True
+
+    # If collected, it remains marked as discovered (permanently visible on map)
+    target_res.collected = True
+    assert target_res.discovered is True

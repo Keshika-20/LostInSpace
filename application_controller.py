@@ -41,8 +41,10 @@ class ApplicationController:
         capacity: float = 10.0,
         environment: Environment | None = None,
         seed: int | None = None,
+        resource_count: int = 18,
     ):
         self.seed = seed if seed is not None else 2025
+        self.resource_count = resource_count
         self.region_index = 0
         self.environment = (
             environment
@@ -51,8 +53,8 @@ class ApplicationController:
         )
         if environment is None and seed is not None:
             self.environment.generate_obstacles(seed=seed, obstacle_rate=0.15)
-            self.environment.place_resources(count=7, seed=seed + 1)
-            self.environment.place_comm_zones(count=1, size_range=(1, 1), seed=seed + 2)
+            self.environment.place_resources(count=self.resource_count, seed=seed + 1)
+            self.environment.place_comm_zones(count=3, size_range=(1, 1), seed=seed + 2)
 
         self.rover = Rover(
             self.environment,
@@ -149,8 +151,8 @@ class ApplicationController:
             base=self.environment.base,
         )
         self.environment.generate_obstacles(seed=new_seed, obstacle_rate=0.15)
-        self.environment.place_resources(count=7, seed=new_seed + 1)
-        self.environment.place_comm_zones(count=1, size_range=(1, 1), seed=new_seed + 2)
+        self.environment.place_resources(count=self.resource_count, seed=new_seed + 1)
+        self.environment.place_comm_zones(count=3, size_range=(1, 1), seed=new_seed + 2)
 
         # Re-initialize rover with preserved map and preserved energy (no 100 energy refill)
         self.rover.env = self.environment
