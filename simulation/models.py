@@ -17,6 +17,7 @@ class Resource:
     data_size: float
     discovered: bool = False
     collected: bool = False
+    name: str = ""
 
 
 @dataclass

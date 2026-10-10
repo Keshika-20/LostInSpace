@@ -9,12 +9,12 @@ from application_controller import ApplicationController
 from simulation.satellite_renderer import draw_satellite_map, draw_satellite_zoom_intro
 from ui import theme
 from ui.controls import Controls
-from ui.dashboard import draw_dashboard
+from ui.dashboard import draw_dashboard, get_fullscreen_toggle_rect
 
 
-def create_application(seed=2025):
+def create_application(seed=2025, resource_count=7):
     """Create a repeatable application instance with slow energy reduction."""
-    app = ApplicationController(seed=seed)
+    app = ApplicationController(seed=seed, resource_count=resource_count)
     app.rover.move_cost = 0.35
     return app
 
@@ -116,17 +116,27 @@ def main():
     _set_windows_dpi_awareness()
     pygame.init()
     
-    screen_width, screen_height = 1280, 720
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    info = pygame.display.Info()
+    screen_width, screen_height = info.current_w, info.current_h
+    is_fullscreen = True
+    fullscreen_console = False
+
+    try:
+        screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN | pygame.RESIZABLE)
+    except Exception:
+        screen_width, screen_height = 1280, 800
+        screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
+
     pygame.display.set_caption("Lost in Space — 3D Autonomous Rover Mission Control")
     clock = pygame.time.Clock()
 
-    title_font = pygame.font.SysFont("arial", 22, bold=True)
-    eyebrow_font = pygame.font.SysFont("arial", 11, bold=True)
-    feedback_font = pygame.font.SysFont("arial", 13)
+    title_font = pygame.font.SysFont("segoe ui", 23, bold=True)
+    eyebrow_font = pygame.font.SysFont("segoe ui", 12, bold=True)
+    feedback_font = pygame.font.SysFont("segoe ui", 15, bold=True)
+    legend_font = pygame.font.SysFont("segoe ui", 12, bold=True)
 
     controls = Controls()
-    application = ApplicationController(seed=2025)
+    application = ApplicationController(seed=2025, resource_count=18)
 
     running = True
     intro_phase = True
@@ -168,25 +178,48 @@ def main():
                 if event.type == pygame.QUIT:
                     running = False
                     continue
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    running = False
-                    continue
+                if event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_TAB, pygame.K_F10):
+                        fullscreen_console = not fullscreen_console
+                        continue
+                    elif event.key == pygame.K_F11:
+                        is_fullscreen = not is_fullscreen
+                        if is_fullscreen:
+                            screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.FULLSCREEN | pygame.RESIZABLE)
+                        else:
+                            screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+                        continue
+                    elif event.key == pygame.K_ESCAPE:
+                        if fullscreen_console:
+                            fullscreen_console = False
+                            continue
+                        else:
+                            running = False
+                            continue
 
-                # UI Button interactions
-                command = controls.handle_event(event)
-                if command is not None:
-                    if command == "START":
-                        application.handle_command("START")
-                        feedback = "AUTONOMOUS MISSION LAUNCHED: Rover target scanning & exploring..."
-                    elif command == "PAUSE":
-                        application.handle_command("PAUSE")
-                        feedback = "Simulation Paused."
-                    elif command == "RESET":
-                        application.handle_command("RESET")
-                        feedback = "Simulation Reset to baseline."
-                    elif command == "EXPLORE_NEXT":
-                        application.handle_command("EXPLORE_NEXT")
-                        feedback = f"Advanced to {application.region_name}! Explored tiles preserved."
+                # Mouse click toggling fullscreen output screen
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    toggle_rect = get_fullscreen_toggle_rect(screen.get_width(), screen.get_height(), fullscreen_console)
+                    if toggle_rect.collidepoint(event.pos):
+                        fullscreen_console = not fullscreen_console
+                        continue
+
+                # UI Button interactions (in standard view)
+                if not fullscreen_console:
+                    command = controls.handle_event(event)
+                    if command is not None:
+                        if command == "START":
+                            application.handle_command("START")
+                            feedback = "AUTONOMOUS MISSION LAUNCHED: Rover mineral scanning & exploration..."
+                        elif command == "PAUSE":
+                            application.handle_command("PAUSE")
+                            feedback = "Simulation Paused."
+                        elif command == "RESET":
+                            application.handle_command("RESET")
+                            feedback = "Simulation Reset to baseline."
+                        elif command == "EXPLORE_NEXT":
+                            application.handle_command("EXPLORE_NEXT")
+                            feedback = f"Advanced to {application.region_name}! Explored tiles preserved."
 
             # 3. Autonomous Simulation Step Ticking
             if application.is_running:
@@ -203,52 +236,60 @@ def main():
                     else:
                         feedback = f"AUTONOMOUS PHASE: {state.value}..."
 
+                    if application.autonomous_mission.logs and "If reached, mission failure may occur" in application.autonomous_mission.logs[-1]:
+                        feedback = "⚠️ ALERT: If reached, mission failure may occur · Unsafe area exploration avoided!"
+
             # 4. Rendering Phase
             screen.fill((7, 12, 22))
 
-            # Draw Photorealistic Satellite Orbital Map
-            draw_satellite_map(
-                screen,
-                application.environment,
-                application.rover,
-                route=application.planned_route,
-                target=application.planned_target,
-                session_info={"useful_cells": application.autonomous_mission.useful_cells},
-                time_sec=time_sec,
-            )
-
-            # Draw Header Bar
-            screen.blit(
-                eyebrow_font.render("SATELLITE ORBITAL RECONNAISSANCE & MISSION CONTROL", True, (0, 230, 255)),
-                (38, 14),
-            )
-            screen.blit(title_font.render("LOST IN SPACE — SATELLITE ROVER MISSION CONTROL", True, theme.TEXT), (38, 30))
-            screen.blit(feedback_font.render(feedback, True, (255, 215, 0)), (38, 62))
-
-            # Draw Telemetry Dashboard
-            draw_dashboard(screen, application, time_sec=time_sec)
-
-            # Draw Control Buttons
-            controls.draw(
-                screen,
-                simulation_running=application.is_running,
-                active_state=application.autonomous_mission.state.name,
-            )
-
-            # Legend overlay under satellite map frame (left side, no overlap with buttons)
-            legend_y = 658
-            for legend_x, color, label in (
-                (50, (245, 185, 75), "ROVER 01"),
-                (135, (180, 70, 50), "CRATER"),
-                (210, (255, 215, 0), "MINERAL"),
-                (290, (0, 220, 255), "COMM STN"),
-                (380, (80, 240, 180), "BASE HAB"),
-            ):
-                pygame.draw.circle(screen, color, (legend_x + 4, legend_y + 6), 5)
-                screen.blit(
-                    eyebrow_font.render(label, True, theme.MUTED_TEXT),
-                    (legend_x + 13, legend_y),
+            if fullscreen_console:
+                # Full Screen Mission Control Output Terminal View
+                draw_dashboard(screen, application, time_sec=time_sec, fullscreen_console=True)
+            else:
+                # Dual View: Satellite Orbital Map + Telemetry Dashboard + Controls
+                map_rect = draw_satellite_map(
+                    screen,
+                    application.environment,
+                    application.rover,
+                    route=application.planned_route,
+                    target=application.planned_target,
+                    session_info={"useful_cells": application.autonomous_mission.useful_cells},
+                    time_sec=time_sec,
                 )
+
+                # Draw Header Bar
+                screen.blit(
+                    eyebrow_font.render("SATELLITE ORBITAL RECONNAISSANCE & MISSION CONTROL", True, (0, 230, 255)),
+                    (38, 14),
+                )
+                screen.blit(title_font.render("LOST IN SPACE — SATELLITE ROVER MISSION CONTROL", True, theme.TEXT), (38, 30))
+                screen.blit(feedback_font.render(feedback, True, (255, 215, 0)), (38, 62))
+
+                # Draw Telemetry Dashboard with Enlarged Output Console
+                draw_dashboard(screen, application, time_sec=time_sec, fullscreen_console=False)
+
+                # Draw Control Buttons (docked at the base of the minimized dashboard)
+                controls.draw(
+                    screen,
+                    simulation_running=application.is_running,
+                    active_state=application.autonomous_mission.state.name,
+                )
+
+                # Legend overlay under satellite map frame
+                legend_y = min(screen.get_height() - 26, map_rect.bottom + 8)
+                for offset_x, color, label in (
+                    (0, (245, 185, 75), "ROVER 01"),
+                    (85, (180, 70, 50), "CRATER"),
+                    (160, (255, 215, 0), "MINERAL"),
+                    (240, (0, 220, 255), "3 COMM STNS"),
+                    (345, (80, 240, 180), "BASE HAB"),
+                ):
+                    lx = map_rect.left + offset_x
+                    pygame.draw.circle(screen, color, (lx + 4, legend_y + 6), 5)
+                    screen.blit(
+                        legend_font.render(label, True, theme.MUTED_TEXT),
+                        (lx + 13, legend_y),
+                    )
 
             pygame.display.flip()
 

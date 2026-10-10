@@ -45,11 +45,12 @@ class AutonomousMissionController:
         self.session_data_collected = 0.0
         self.session_data_uploaded = 0.0
         self.useful_cells = set()
+        self.highest_mineral_zone = None
         self.logs = []
 
     def log(self, message):
         self.logs.append(message)
-        if len(self.logs) > 6:
+        if len(self.logs) > 12:
             self.logs.pop(0)
 
     def start_mission(self):
@@ -59,6 +60,7 @@ class AutonomousMissionController:
         self.planned_path = []
         self.session_data_collected = 0.0
         self.session_data_uploaded = 0.0
+        self.highest_mineral_zone = None
         self.log("Autonomous Mission Launched!")
 
     def step(self):
@@ -88,8 +90,14 @@ class AutonomousMissionController:
                     if res_col.success:
                         self.session_data_collected += res_here.value
                         self.useful_cells.add(rover.position)
-                        data_type = get_data_type(res_here.value)
-                        self.log(f"IDENTIFIED: {data_type} ({res_here.value:.0f} MB)")
+                        m_name = getattr(res_here, "name", "") or get_data_type(res_here.value)
+                        if self.highest_mineral_zone is None or res_here.value > self.highest_mineral_zone["value"]:
+                            self.highest_mineral_zone = {
+                                "name": m_name,
+                                "pos": rover.position,
+                                "value": res_here.value,
+                            }
+                        self.log(f"Explored {m_name} (+{res_here.value:.0f} MB)")
 
             # Decide if we need to switch to Comm Zone upload
             has_cargo = rover.carried_data > 0
@@ -105,19 +113,19 @@ class AutonomousMissionController:
                 self.log("Cargo loaded -> Head to Comm Zone")
                 return True
 
-            # Target Selection: Prioritize high-value undiscovered/uncollected resources
+            # Target Selection: Prioritize high-value uncollected minerals
             if not self.current_target or self.current_target == rover.position or not self.planned_path:
                 known_res = rover.known_map.known_resources()
                 uncollected = [r for r in known_res if not r.collected]
 
+                candidates_to_eval = []
                 if uncollected:
                     # Sort by scientific value / distance ratio
                     uncollected.sort(
                         key=lambda r: r.value / max(1, abs(r.position[0] - rover.position[0]) + abs(r.position[1] - rover.position[1])),
                         reverse=True,
                     )
-                    best_res = uncollected[0]
-                    target_candidate = best_res.position
+                    candidates_to_eval = [r.position for r in uncollected]
                 else:
                     # Frontier exploration
                     frontiers = rover.known_map.frontiers()
@@ -125,25 +133,63 @@ class AutonomousMissionController:
                         frontiers.sort(
                             key=lambda f: abs(f[0] - rover.position[0]) + abs(f[1] - rover.position[1])
                         )
-                        target_candidate = frontiers[0]
+                        candidates_to_eval = frontiers
                     else:
-                        target_candidate = env.base
+                        candidates_to_eval = [env.base]
 
-                # Pre-calculate roundtrip energy needed for this candidate target
-                dist_tgt = abs(target_candidate[0] - rover.position[0]) + abs(target_candidate[1] - rover.position[1])
-                dist_cz = min(abs(target_candidate[0] - z[0]) + abs(target_candidate[1] - z[1]) for z in env.zone_cells) if env.zone_cells else 0
-                dist_base = abs(target_candidate[0] - env.base[0]) + abs(target_candidate[1] - env.base[1])
-                energy_needed = (dist_tgt + dist_cz + dist_base) * rover.move_cost + 4.0
+                # Evaluate candidate targets with energy safety lookahead
+                safe_target = None
+                for cand in candidates_to_eval:
+                    dist_to_cand = abs(cand[0] - rover.position[0]) + abs(cand[1] - rover.position[1])
+                    dist_cz = min(abs(cand[0] - z[0]) + abs(cand[1] - z[1]) for z in env.zone_cells) if env.zone_cells else 0
+                    dist_base = abs(cand[0] - env.base[0]) + abs(cand[1] - env.base[1])
+                    
+                    # Energy needed to reach candidate AND safely transmit / return to base
+                    if rover.carried_data > 0 or cand in [r.position for r in uncollected]:
+                        energy_needed = (dist_to_cand + dist_cz + dist_base) * rover.move_cost + 4.0
+                    else:
+                        energy_needed = (dist_to_cand + dist_base) * rover.move_cost + 3.0
 
-                if rover.energy < energy_needed and rover.carried_data > 0:
-                    self.log(f"⚠️ PRE-CALC: Power low to reach target ({rover.energy:.0f} < {energy_needed:.0f}). Head to Comm Zone!")
-                    self.state = MissionState.NAVIGATING_COMM_ZONE
+                    if rover.energy < energy_needed:
+                        # Unsafe to explore this area: reaching it risks mission failure
+                        print("If reached, mission failure may occur")
+                        self.log("If reached, mission failure may occur")
+                        # Do not explore this area
+                        continue
+                    else:
+                        safe_target = cand
+                        break
+
+                if safe_target is None:
+                    # No safe exploration targets remain without risking mission failure
+                    print("If reached, mission failure may occur")
+                    self.log("If reached, mission failure may occur")
+                    if rover.carried_data > 0:
+                        self.state = MissionState.NAVIGATING_COMM_ZONE
+                    else:
+                        self.state = MissionState.RETURNING_TO_BASE
                     self.current_target = None
                     self.planned_path = []
                     return True
 
-                self.current_target = target_candidate
+                self.current_target = safe_target
                 self.planned_path = find_path(rover.position, self.current_target, rover.known_map) or []
+
+            # Safety check along active path
+            if self.planned_path and len(self.planned_path) > 1:
+                steps_remaining = len(self.planned_path) - 1
+                dist_base = abs(self.current_target[0] - env.base[0]) + abs(self.current_target[1] - env.base[1])
+                critical_needed = (steps_remaining + dist_base) * rover.move_cost + 3.0
+                if rover.energy < critical_needed:
+                    print("If reached, mission failure may occur")
+                    self.log("If reached, mission failure may occur")
+                    self.current_target = None
+                    self.planned_path = []
+                    if rover.carried_data > 0:
+                        self.state = MissionState.NAVIGATING_COMM_ZONE
+                    else:
+                        self.state = MissionState.RETURNING_TO_BASE
+                    return True
 
             # Execute step along planned path
             return self._follow_path()
@@ -155,23 +201,24 @@ class AutonomousMissionController:
                 self.log("Arrived at Comm Zone -> Transmitting...")
                 return True
 
-            # Find nearest known comm zone cell
-            known_zones = rover.known_map.known_zone_cells()
-            if not known_zones:
-                # If not seen yet, explore towards unvisited area
-                frontiers = rover.known_map.frontiers()
-                if frontiers:
-                    target_zone = frontiers[0]
-                else:
-                    target_zone = env.base
-            else:
-                known_zones.sort(
+            # Find nearest of the 3 communication zones
+            target_zone = None
+            if env.zone_cells:
+                cz_candidates = sorted(list(env.zone_cells))
+                cz_candidates.sort(
                     key=lambda z: abs(z[0] - rover.position[0]) + abs(z[1] - rover.position[1])
                 )
-                target_zone = known_zones[0]
+                target_zone = cz_candidates[0]
+            else:
+                target_zone = env.base
 
             self.current_target = target_zone
             self.planned_path = find_path(rover.position, self.current_target, rover.known_map) or []
+            if not self.planned_path:
+                frontiers = rover.known_map.frontiers()
+                if frontiers:
+                    frontiers.sort(key=lambda f: abs(f[0] - target_zone[0]) + abs(f[1] - target_zone[1]))
+                    self.planned_path = find_path(rover.position, frontiers[0], rover.known_map) or []
             return self._follow_path()
 
         # State 3: UPLOADING DATA
@@ -190,12 +237,17 @@ class AutonomousMissionController:
         # State 4: RETURNING TO BASE
         elif self.state == MissionState.RETURNING_TO_BASE:
             if rover.position == env.base:
-                if self.session_data_uploaded > 0 or self.session_data_collected > 0:
-                    self.state = MissionState.SUCCESS
-                    self.log("MISSION ACCOMPLISHED: Returned to Base!")
-                else:
-                    self.state = MissionState.SUCCESS
-                    self.log("Returned to Base safely.")
+                self.state = MissionState.SUCCESS
+                if self.highest_mineral_zone:
+                    hz = self.highest_mineral_zone
+                    log_msg = f"★ HIGH MINERAL ZONE: {hz['name']} ({hz['value']:.0f} MB) at R{hz['pos'][0]}, C{hz['pos'][1]}"
+                    console_msg = f"[HIGH MINERAL ZONE] {hz['name']} ({hz['value']:.0f} MB) at R{hz['pos'][0]}, C{hz['pos'][1]}"
+                    try:
+                        print(console_msg)
+                    except Exception:
+                        pass
+                    self.log(log_msg)
+                self.log("MISSION ACCOMPLISHED: Returned safely to Base!")
                 return True
 
             self.current_target = env.base

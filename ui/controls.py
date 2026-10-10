@@ -6,13 +6,13 @@ class Controls:
     """Draw UI controls and map click events to mission application commands."""
 
     def __init__(self):
-        self.font = pygame.font.SysFont("arial", 15, bold=True)
-        self.direction_font = pygame.font.SysFont("arial", 13, bold=True)
+        self.font = pygame.font.SysFont("segoe ui", 12, bold=True)
+        self.direction_font = pygame.font.SysFont("segoe ui", 11, bold=True)
         self.buttons = {
-            "START": pygame.Rect(520, 652, 140, 48),
-            "PAUSE": pygame.Rect(670, 652, 110, 48),
-            "RESET": pygame.Rect(790, 652, 110, 48),
-            "EXPLORE_NEXT": pygame.Rect(910, 652, 230, 48),
+            "START": pygame.Rect(898, 616, 172, 36),
+            "PAUSE": pygame.Rect(1078, 616, 172, 36),
+            "RESET": pygame.Rect(898, 658, 172, 36),
+            "EXPLORE_NEXT": pygame.Rect(1078, 658, 172, 36),
             # Legacy off-screen hitboxes for test suite backward compatibility
             "COLLECT": pygame.Rect(-100, -100, 10, 10),
             "ROUTE": pygame.Rect(-200, -100, 10, 10),
@@ -25,7 +25,7 @@ class Controls:
             "START": "START MISSION",
             "PAUSE": "PAUSE",
             "RESET": "RESET",
-            "EXPLORE_NEXT": "EXPLORE NEXT REGION",
+            "EXPLORE_NEXT": "EXPLORE NEXT",
         }
         self.active_visible_commands = ["START", "PAUSE", "RESET", "EXPLORE_NEXT"]
         self._mouse_button_down = False
@@ -50,7 +50,22 @@ class Controls:
                 return command
         return None
 
+    def update_layout(self, screen_w, screen_h):
+        width = min(390, max(360, int(screen_w * 0.28))) if screen_w >= 1000 else 380
+        x = screen_w - width - 16
+        panel_height = max(560, screen_h - 86 - 16)
+        panel_bottom = 86 + panel_height
+        btn_w = (width - 28 - 8) // 2
+        btn_h = 36
+        row1_y = panel_bottom - 88
+        row2_y = panel_bottom - 46
+        self.buttons["START"] = pygame.Rect(x + 14, row1_y, btn_w, btn_h)
+        self.buttons["PAUSE"] = pygame.Rect(x + 14 + btn_w + 8, row1_y, btn_w, btn_h)
+        self.buttons["RESET"] = pygame.Rect(x + 14, row2_y, btn_w, btn_h)
+        self.buttons["EXPLORE_NEXT"] = pygame.Rect(x + 14 + btn_w + 8, row2_y, btn_w, btn_h)
+
     def draw(self, screen, simulation_running=False, collect_ready=True, route_ready=True, active_state="IDLE"):
+        self.update_layout(screen.get_width(), screen.get_height())
         mouse_position = pygame.mouse.get_pos()
         for command in self.active_visible_commands:
             rect = self.buttons[command]

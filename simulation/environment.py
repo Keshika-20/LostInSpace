@@ -21,6 +21,24 @@ OBSTACLE = 1
 DIRECTIONS = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 
+def get_mineral_name(value: float) -> str:
+    """Classify scientific value into realistic planetary mineral types."""
+    if value >= 85:
+        return "Gold Ore"
+    elif value >= 75:
+        return "Platinum Vein"
+    elif value >= 65:
+        return "Rare Isotope"
+    elif value >= 50:
+        return "Copper Deposit"
+    elif value >= 35:
+        return "Titanium Vein"
+    elif value >= 20:
+        return "Lithium Core"
+    else:
+        return "Quartz Crystal"
+
+
 class Environment:
     def __init__(self, rows: int = 10, cols: int = 10, base: Position = (0, 0)):
         if rows <= 0 or cols <= 0:
@@ -130,7 +148,8 @@ class Environment:
         for pos in rng.sample(candidates, count):
             value = float(rng.randint(*value_range))
             data_size = float(rng.randint(*size_range))
-            self.resources.append(Resource(position=pos, value=value, data_size=data_size))
+            name = get_mineral_name(value)
+            self.resources.append(Resource(position=pos, value=value, data_size=data_size, name=name))
 
     def resource_at(self, pos: Position):
         """The uncollected resource on this cell, or None."""
