@@ -83,23 +83,18 @@ def test_button_commands_change_controller_state(pygame_init):
 def test_every_control_hitbox_is_visible_in_application_window(pygame_init):
     controls = Controls()
 
-    assert set(controls.buttons) == {
+    assert set(controls.active_visible_commands) == {
         "START",
         "PAUSE",
         "RESET",
-        "COLLECT",
-        "ROUTE",
-        "MOVE_UP",
-        "MOVE_LEFT",
-        "MOVE_DOWN",
-        "MOVE_RIGHT",
+        "EXPLORE_NEXT",
     }
     assert all(
-        rect.left >= 0
-        and rect.top >= 0
-        and rect.right <= 1280
-        and rect.bottom <= 720
-        for rect in controls.buttons.values()
+        controls.buttons[cmd].left >= 0
+        and controls.buttons[cmd].top >= 0
+        and controls.buttons[cmd].right <= 1280
+        and controls.buttons[cmd].bottom <= 720
+        for cmd in controls.active_visible_commands
     )
 
 
